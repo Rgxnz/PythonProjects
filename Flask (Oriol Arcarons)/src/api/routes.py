@@ -15,6 +15,19 @@ def init_api_routes(app):
                 'price': float(b.price) 
             } for b in books
         ]) 
+    @app.route('/api/books/<int:id>', methods=['GET'])
+    def get_book(id):
+        book = sessionobj.query(Book).get(id)
+        
+        if not book:
+            return jsonify({"error": "Libro no encontrado"}), 404
+            
+        return jsonify({
+            'id': book.id,
+            'title': book.title,
+            'author': book.author,
+            'price': float(book.price)
+        })
 
     @app.route('/api/books', methods=['POST'])
     def post_book():
