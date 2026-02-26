@@ -6,44 +6,60 @@ from src.auth_dao import AuthDAO
 class VoiceAuditApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("VoiceAudit Login")
-        self.service = VoiceService()
+        self.root.title("VoiceAudit Pro")
+        self.root.geometry("400x450")
+        
+        self.voice_service = VoiceService()
         self.dao = AuthDAO()
 
-        # UI simplificada
-        tk.Label(root, text="Nombre de Usuario:").pack(pady=5)
+        tk.Label(root, text="SISTEMA BIOMÉTRICO", font=("Arial", 12, "bold")).pack(pady=20)
+        tk.Label(root, text="Usuario:").pack()
         self.ent_user = tk.Entry(root)
         self.ent_user.pack(pady=5)
 
-        tk.Button(root, text="Iniciar Registro Vocal", command=self.proceso_registro).pack(pady=10)
-        tk.Button(root, text="Consultar Auditoría", command=self.mostrar_auditoria).pack(pady=5)
-        
-        self.txt_logs = tk.Text(root, height=10, width=40)
-        self.txt_logs.pack(pady=10)
+        tk.Button(root, text="REGISTRAR", command=self.handle_registro, bg="#D4E6F1", width=20).pack(pady=10)
+        tk.Button(root, text="LOGIN", command=self.handle_login, bg="#D5F5E3", width=20).pack(pady=10)
+        tk.Button(root, text="AUDITORÍA", command=self.handle_auditoria, width=20).pack(pady=20)
 
-    def proceso_registro(self):
-        username = self.ent_user.get()
-        if not username:
-            messagebox.showwarning("Aviso", "Introduce un nombre")
-            return
+    def handle_registro(self):
+        user = self.ent_user.get()
+        frase, conf = self.voice_service.capturar_frase()
+        if frase:
+            if messagebox.askyesno("Confirmar", f"¿Has dicho: '{frase}'?"):
+                if self.dao.registrar_usuario(user, frase, conf):
+                    messagebox.showinfo("Éxito", "Usuario registrado")
 
-        # Captura mediante Facade 
-        frase, confianza = self.service.capturar_frase()
+    def handle_login(self):
+        user = self.ent_user.get()
+        if not user:
+            return messagebox.showwarning("Aviso", "Introduce un nombre de usuario")
+            
+        # 1. El Facade (VoiceService) captura la voz
+        frase, conf = self.voice_service.capturar_frase()
         
         if frase:
-            if messagebox.askyesno("Confirmación", f"¿Tu frase es: '{frase}'?"):
-                # Datos variables para el JSONB 
-                log_data = {"status": "OK", "confianza": confianza, "latencia": "1.1s"}
-                if self.dao.registrar_usuario(username, frase, log_data):
-                    messagebox.showinfo("Éxito", "Usuario registrado correctamente")
+            # 2. Informamos al usuario de lo que la IA ha detectado
+            messagebox.showinfo("Procesando Voz", f"IA ha detectado: '{frase}'\nConfianza: {conf:.2f}")
+            
+            # 3. Validamos mediante el DAO en PostgreSQL
+            res = self.dao.validar_login(user, frase, conf)
+            
+            if res == "SUCCESS":
+                messagebox.showinfo("Login", "¡Identidad confirmada!")
+            elif res == "USER_LOCKED":
+                messagebox.showerror("BLOQUEO", "Usuario bloqueado. Demasiados intentos fallidos.")
+            else:
+                # Si falla, el usuario ya sabe qué frase "entendió" el sistema
+                messagebox.showwarning("Denegado", f"La frase '{frase}' no es correcta para este usuario.")
         else:
-            messagebox.showerror("Error", "No se detectó voz clara")
+            messagebox.showerror("Error", "No se detectó audio inteligible.")
 
-    def mostrar_auditoria(self):
-        logs = self.dao.obtener_auditoria_critica()
-        self.txt_logs.delete(1.0, tk.END)
-        for user, status in logs:
-            self.txt_logs.insert(tk.END, f"ALERTA: {user} - Status: {status}\n")
+    def handle_auditoria(self):
+        logs = self.dao.obtener_auditoria()
+        reporte = "HISTORIAL (JSONB):\n"
+        for l in logs:
+            reporte += f"{l[0]} | {l[2]} | Conf: {l[3]}\n"
+        messagebox.showinfo("Auditoría", reporte if logs else "Vacío")
 
 if __name__ == "__main__":
     root = tk.Tk()
